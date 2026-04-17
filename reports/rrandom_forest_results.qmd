@@ -1,0 +1,94 @@
+---
+title: "Random Forest Model"
+author: "Storm Pino"
+format: docx
+---
+
+## Random Forest Model
+
+We used a random forest model to predict the overall outcome class of Google Play Store apps. Random forests are useful because they can handle nonlinear relationships and interactions between variables better than a single tree. This makes them a good choice for classification problems with several predictors.
+
+Our response variable was `Outcome_Class`, where:
+
+- 1 = bad
+- 2 = decent
+- 3 = successful
+
+We defined the classes using app rating and install count:
+
+- Class 3: apps with at least 1,000,000 installs and rating at least 4.2
+- Class 2: apps with at least 100,000 installs and rating at least 3.5, but not enough to be class 3
+- Class 1: all remaining apps
+
+The predictors used in the random forest model were:
+
+- Reviews
+- Size of the app
+- Price
+- Category
+- Type
+- Content Rating
+
+## Model Code
+
+```{r}
+library(readr)
+library(dplyr)
+library(randomForest)
+
+df <- read_csv("../data/processed/cleaned_data.csv")
+
+df <- df %>%
+  rename(Price = `Price_$`)
+
+df$Category <- as.factor(df$Category)
+df$Type <- as.factor(df$Type)
+df$Content_Rating <- as.factor(df$Content_Rating)
+
+df <- df %>%
+  mutate(
+    Outcome_Class = case_when(
+      Installs >= 1000000 & Rating >= 4.2 ~ 3,
+      Installs >= 100000 & Rating >= 3.5 ~ 2,
+      TRUE ~ 1
+    )
+  )
+
+df$Outcome_Class <- as.factor(df$Outcome_Class)
+
+set.seed(123)
+
+n <- nrow(df)
+train_rows <- sample(1:n, size = 0.8 * n)
+
+train <- df[train_rows, ]
+test <- df[-train_rows, ]
+
+rf_model <- randomForest(
+  Outcome_Class ~ Reviews + Size_MB + Price + Category + Type + Content_Rating,
+  data = train
+)
+
+pred <- predict(rf_model, newdata = test)
+
+table(Predicted = pred, Actual = test$Outcome_Class)
+mean(pred == test$Outcome_Class)
+importance(rf_model)
+
+```
+Results
+
+The random forest model produced an accuracy of about 0.625 on the test set. This means the model correctly classified about 62.5 percent of the apps in the testing data.
+
+One limitation of the model is that it tended to predict the majority class more often than the other classes. This suggests that the dataset has some class imbalance, which made it harder for the model to correctly identify the higher outcome classes.
+
+Important Predictors
+
+The most important predictor in the random forest model was Reviews. Other important predictors included Category, Price, and Content_Rating. The variable Size_MB had little to no effect in the model.
+
+This suggests that the number of reviews is the strongest indicator of app outcome, while app type and content rating also contribute to prediction. App size does not appear to play a meaningful role in determining the final outcome class.
+
+Conclusion
+
+Overall, the random forest model gave moderate predictive performance. While it struggled more with the less common outcome classes, it still identified useful patterns in the data. In particular, review count, app category, and price were among the strongest predictors of app outcome.
+```
