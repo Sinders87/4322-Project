@@ -39,7 +39,8 @@ model_cv <- train(
 
 #get confusion matrix
 lr_preds <- model_cv$pred
-confusionMatrix(lr_preds$pred, lr_preds$obs)
+cm_log <- confusionMatrix(lr_preds$pred, lr_preds$obs)
+cm_log
 
 #perform cv on random forest
 rf_model <- train(
@@ -51,5 +52,16 @@ rf_model <- train(
   tuneLength = 3
 )
 
+#get accuracy
 rf_preds <- rf_model$pred
 confusionMatrix(rf_preds$pred, rf_preds$obs)
+
+#visuals from here onward
+
+#for RF
+importance <- varImp(rf_model)
+print(importance)
+plot(importance, main = "RF Variable Importance")
+
+log_table <- cm_log$table
+print(log_table)
