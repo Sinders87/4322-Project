@@ -1,42 +1,38 @@
 ---
-title: "Random Forest Model"
+title: "Random Forest Model Results"
 author: "Storm Pino"
 format: docx
 ---
 
-## Random Forest Model
+## Random Forest Model Results (Storm Pino)
 
-We used a random forest model to predict the overall outcome class of Google Play Store apps. Random forests are useful because they can handle nonlinear relationships and interactions between variables better than a single tree. This makes them a good choice for classification problems with several predictors.
+This section reports the Random Forest results for the Google Play Store app dataset. The goal was to predict an app’s outcome class using app characteristics.
 
-Our response variable was `Outcome_Class`, where:
+The response variable was `Outcome_Class`, where:
 
 - 1 = bad
 - 2 = decent
 - 3 = successful
 
-We defined the classes using app rating and install count:
+The classes were defined using rating and install count:
 
-- Class 3: apps with at least 1,000,000 installs and rating at least 4.2
-- Class 2: apps with at least 100,000 installs and rating at least 3.5, but not enough to be class 3
-- Class 1: all remaining apps
+- Class 3: Installs >= 1,000,000 and Rating >= 4.2
+- Class 2: Installs >= 100,000 and Rating >= 3.5, but not enough to be Class 3
+- Class 1: All remaining apps
 
-The predictors used in the random forest model were:
+The Random Forest model formula was:
 
-- Reviews
-- Size of the app
-- Price
-- Category
-- Type
-- Content Rating
+Outcome_Class ~ Reviews + Size_MB + Price + Category + Type + Content_Rating
 
-## Model Code
+## Data Preparation
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 library(readr)
 library(dplyr)
 library(randomForest)
+library(ggplot2)
 
-df <- read_csv("../data/processed/cleaned_data.csv")
+df <- read_csv("data/processed/cleaned_data.csv", show_col_types = FALSE)
 
 df <- df %>%
   rename(Price = `Price_$`)
@@ -56,39 +52,128 @@ df <- df %>%
 
 df$Outcome_Class <- as.factor(df$Outcome_Class)
 
+table(df$Outcome_Class)
+```
+
+## Random Forest Method
+
+Random Forest was used because it can handle nonlinear relationships and interactions between predictors. It also reduces the instability of a single decision tree by building many trees and combining their predictions.
+
+A limitation of Random Forest is that it is less interpretable than simpler models. It can show which variables are important, but it does not give simple coefficients like linear or logistic regression.
+
+## 10 Train/Test Splits
+
+```{r, message=FALSE, warning=FALSE}
+accuracy <- rep(0, 10)
+
+for (i in 1:10) {
+  
+  set.seed(i)
+  
+  train_rows <- sample(1:nrow(df), size = 0.8 * nrow(df))
+  
+  train <- df[train_rows, ]
+  test <- df[-train_rows, ]
+  
+  rf_model <- randomForest(
+    Outcome_Class ~ Reviews + Size_MB + Price + Category + Type + Content_Rating,
+    data = train,
+    ntree = 1000,
+    importance = TRUE
+  )
+  
+  pred <- predict(rf_model, newdata = test)
+  
+  accuracy[i] <- mean(pred == test$Outcome_Class)
+}
+
+accuracy
+mean_accuracy <- mean(accuracy)
+mean_accuracy
+```
+
+## One Train/Test Split for Confusion Matrix
+
+```{r, message=FALSE, warning=FALSE}
 set.seed(123)
 
-n <- nrow(df)
-train_rows <- sample(1:n, size = 0.8 * n)
+train_rows <- sample(1:nrow(df), size = 0.8 * nrow(df))
 
 train <- df[train_rows, ]
 test <- df[-train_rows, ]
 
 rf_model <- randomForest(
   Outcome_Class ~ Reviews + Size_MB + Price + Category + Type + Content_Rating,
-  data = train
+  data = train,
+  ntree = 1000,
+  importance = TRUE
 )
 
 pred <- predict(rf_model, newdata = test)
 
-table(Predicted = pred, Actual = test$Outcome_Class)
-mean(pred == test$Outcome_Class)
+confusion_matrix <- table(Predicted = pred, Actual = test$Outcome_Class)
+confusion_matrix
+
+single_accuracy <- mean(pred == test$Outcome_Class)
+single_accuracy
+```
+
+## Variable Importance
+
+```{r, message=FALSE, warning=FALSE}
 importance(rf_model)
-
+varImpPlot(rf_model)
 ```
-Results
 
-The random forest model produced an accuracy of about 0.625 on the test set. This means the model correctly classified about 62.5 percent of the apps in the testing data.
+## Top Successful Categories
 
-One limitation of the model is that it tended to predict the majority class more often than the other classes. This suggests that the dataset has some class imbalance, which made it harder for the model to correctly identify the higher outcome classes.
+```{r, message=FALSE, warning=FALSE}
+category_success <- df %>%
+  group_by(Category) %>%
+  summarise(
+    total_apps = n(),
+    successful_apps = sum(Outcome_Class == 3),
+    success_rate = successful_apps / total_apps
+  ) %>%
+  filter(total_apps >= 20) %>%
+  arrange(desc(success_rate))
 
-Important Predictors
-
-The most important predictor in the random forest model was Reviews. Other important predictors included Category, Price, and Content_Rating. The variable Size_MB had little to no effect in the model.
-
-This suggests that the number of reviews is the strongest indicator of app outcome, while app type and content rating also contribute to prediction. App size does not appear to play a meaningful role in determining the final outcome class.
-
-Conclusion
-
-Overall, the random forest model gave moderate predictive performance. While it struggled more with the less common outcome classes, it still identified useful patterns in the data. In particular, review count, app category, and price were among the strongest predictors of app outcome.
+head(category_success, 3)
 ```
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(category_success, aes(x = reorder(Category, success_rate), y = success_rate)) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Success Rate by App Category",
+    x = "Category",
+    y = "Success Rate"
+  )
+```
+
+## Results
+
+The Random Forest model achieved moderate predictive performance. Across 10 different train/test splits, the model’s average accuracy was calculated using the testing data from each split.
+
+For one train/test split, the model produced an accuracy of about 62.5 percent. This means the model correctly classified about 62.5 percent of the apps in the testing set.
+
+The model had difficulty predicting the higher outcome classes. This likely happened because the outcome classes were not evenly balanced. Since more apps were in Class 1, the model tended to predict the majority class more often.
+
+## Important Predictors
+
+The most important predictor was `Reviews`. Other important predictors were `Category`, `Price`, and `Content_Rating`. The variable `Size_MB` had little to no effect in the model.
+
+This suggests that user engagement and app type were more useful for predicting app outcome than app size.
+
+## Category Success Rates
+
+We also examined which app categories had the highest success rates. Success rate was calculated as the number of Class 3 apps divided by the total number of apps in that category.
+
+This helps answer whether certain categories are more likely to produce successful apps.
+
+## Conclusion
+
+The Random Forest model gave moderate predictive performance. It did not perfectly classify all app outcome levels, but it identified useful patterns in the data.
+
+Overall, `Reviews`, `Category`, and `Price` were the strongest predictors of app outcome. App size was not useful for prediction.
